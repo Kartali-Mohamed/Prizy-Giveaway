@@ -190,6 +190,15 @@
         }
       });
 
+      function normalizeString(str) {
+        return str
+          .toString()
+          .trim()
+          .normalize("NFD") // separate accents from letters
+          .replace(/[\u0300-\u036f]/g, "") // remove accents
+          .toLowerCase();
+      }
+
       // Handle form submission
       form.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -205,15 +214,38 @@
         readXlsxFile(input).then((rows) => {
           const nbWinners = numberInput.valueAsNumber;
 
+          // Find column indexes for Nom and Prenom
+          const nomIndex = rows[0].findIndex(col => normalizeString(col).includes("nom"));
+          const prenomIndex = rows[0].findIndex(col => normalizeString(col).includes("prenom"));
+
+          if (nomIndex === -1 || prenomIndex === -1) {
+            alert("Fichier Excel invalide : colonnes Nom et Prénom manquantes !");
+            return;
+          }
+
+          // Filter duplicates by Nom+Prenom
+          const seenNames = new Set();
+          const uniqueRows = [rows[0]]; // Keep header row first
+          for (let i = 1; i < rows.length; i++) {
+            const nom = (rows[i][nomIndex] || "").toString().trim().toLowerCase();
+            const prenom = (rows[i][prenomIndex] || "").toString().trim().toLowerCase();
+            const key = nom + "|" + prenom;
+
+            if (!seenNames.has(key) && nom && prenom) {
+              seenNames.add(key);
+              uniqueRows.push(rows[i]);
+            }
+          }
+
           // Check if there are enough participants for the number of winners requested
-          if (nbWinners <= rows.length - 1) {
+          if (nbWinners <= uniqueRows.length - 1) {
             var winnersIndexes = new Set(); // Set to store unique winner indexes
             var winnersTable = []; // Array to hold data for exporting
 
             var stop = false;
             // Randomly select winners until the desired number of winners is reached
             while (!stop) {
-              const newwinner = getRandomInt(1, rows.length - 1);
+              const newwinner = getRandomInt(1, uniqueRows.length - 1);
               if (!winnersIndexes.has(newwinner)) {
                 winnersIndexes.add(newwinner);
               }
@@ -292,19 +324,16 @@
               ];
 
               // Loop through the winner's data and display it
-              for (
-                var cellindex = Math.min(rows[winnerindex].length, 1);
-                cellindex < Math.min(rows[winnerindex].length, 3);
-                cellindex++
-              ) {
+              for (var cellindex = 1; cellindex < uniqueRows[winnerindex].length; cellindex++) {
                 var winnerSpan = document.createElement("span");
                 winnerSpan.className = "formbold-file-name";
-                winnerSpan.innerHTML = `${rows[0][cellindex]} : <b>${rows[winnerindex][cellindex]}</b>`;
+                winnerSpan.innerHTML = `${uniqueRows[0][cellindex]} : <b>${uniqueRows[winnerindex][cellindex]}</b>`;
                 winnerElementContent.append(winnerSpan);
 
-                //Fill the winners table for the export
-                if (cpt === 1) winnersTableHeader.push(rows[0][cellindex]);
-                winnerData.push(rows[winnerindex][cellindex]);
+                // Add column header to winners table on first winner
+                if (cpt === 1) winnersTableHeader.push(uniqueRows[0][cellindex]);
+                // Add this cell value to the winner data
+                winnerData.push(uniqueRows[winnerindex][cellindex]);
               }
 
               // Prize link for each winner
